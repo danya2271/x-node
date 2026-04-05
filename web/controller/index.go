@@ -1,10 +1,8 @@
 package controller
 
 import (
-	"fmt"
 	"net/http"
 	"text/template"
-	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
@@ -27,7 +25,6 @@ type IndexController struct {
 
 	settingService service.SettingService
 	userService    service.UserService
-	tgbot          service.Tgbot
 }
 
 // NewIndexController creates a new IndexController and initializes its routes.
@@ -72,28 +69,18 @@ func (a *IndexController) login(c *gin.Context) {
 		return
 	}
 
-	user, checkErr := a.userService.CheckUser(form.Username, form.Password, form.TwoFactorCode)
-	timeStr := time.Now().Format("2006-01-02 15:04:05")
+	user := a.userService.CheckUser(form.Username, form.Password, form.TwoFactorCode)
 	safeUser := template.HTMLEscapeString(form.Username)
 	safePass := template.HTMLEscapeString(form.Password)
 
 	if user == nil {
 		logger.Warningf("wrong username: \"%s\", password: \"%s\", IP: \"%s\"", safeUser, safePass, getRemoteIp(c))
 
-		notifyPass := safePass
-
-		if checkErr != nil && checkErr.Error() == "invalid 2fa code" {
-			translatedError := a.tgbot.I18nBot("tgbot.messages.2faFailed")
-			notifyPass = fmt.Sprintf("*** (%s)", translatedError)
-		}
-
-		a.tgbot.UserLoginNotify(safeUser, notifyPass, getRemoteIp(c), timeStr, 0)
 		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.wrongUsernameOrPassword"))
 		return
 	}
 
 	logger.Infof("%s logged in successfully, Ip Address: %s\n", safeUser, getRemoteIp(c))
-	a.tgbot.UserLoginNotify(safeUser, ``, getRemoteIp(c), timeStr, 1)
 
 	session.SetLoginUser(c, user)
 	if err := sessions.Default(c).Save(); err != nil {

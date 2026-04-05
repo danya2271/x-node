@@ -33,7 +33,7 @@ func (s *UserService) GetFirstUser() (*model.User, error) {
 	return user, nil
 }
 
-func (s *UserService) CheckUser(username string, password string, twoFactorCode string) (*model.User, error) {
+func (s *UserService) CheckUser(username string, password string, twoFactorCode string) (*model.User) {
 	db := database.GetDB()
 
 	user := &model.User{}
@@ -43,16 +43,16 @@ func (s *UserService) CheckUser(username string, password string, twoFactorCode 
 		First(user).
 		Error
 	if err == gorm.ErrRecordNotFound {
-		return nil, errors.New("invalid credentials")
+		return nil
 	} else if err != nil {
 		logger.Warning("check user err:", err)
-		return nil, err
+		return nil
 	}
 
 	if !crypto.CheckPasswordHash(user.Password, password) {
 		ldapEnabled, _ := s.settingService.GetLdapEnable()
 		if !ldapEnabled {
-			return nil, errors.New("invalid credentials")
+			return nil
 		}
 
 		host, _ := s.settingService.GetLdapHost()
@@ -76,14 +76,14 @@ func (s *UserService) CheckUser(username string, password string, twoFactorCode 
 		}
 		ok, err := ldaputil.AuthenticateUser(cfg, username, password)
 		if err != nil || !ok {
-			return nil, errors.New("invalid credentials")
+			return nil
 		}
 	}
 
 	twoFactorEnable, err := s.settingService.GetTwoFactorEnable()
 	if err != nil {
 		logger.Warning("check two factor err:", err)
-		return nil, err
+		return nil
 	}
 
 	if twoFactorEnable {
@@ -91,15 +91,15 @@ func (s *UserService) CheckUser(username string, password string, twoFactorCode 
 
 		if err != nil {
 			logger.Warning("check two factor token err:", err)
-			return nil, err
+			return nil
 		}
 
 		if gotp.NewDefaultTOTP(twoFactorToken).Now() != twoFactorCode {
-			return nil, errors.New("invalid 2fa code")
+			return nil
 		}
 	}
 
-	return user, nil
+	return user
 }
 
 func (s *UserService) UpdateUser(id int, username string, password string) error {

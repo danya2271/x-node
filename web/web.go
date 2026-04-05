@@ -103,7 +103,6 @@ type Server struct {
 
 	xrayService      service.XrayService
 	settingService   service.SettingService
-	tgbotService     service.Tgbot
 	customGeoService *service.CustomGeoService
 
 	wsHub *websocket.Hub
@@ -347,34 +346,6 @@ func (s *Server) startTask() {
 		// job has zero-value services with method receivers that read settings on demand
 		s.cron.AddJob(runtime, j)
 	}
-
-	// Make a traffic condition every day, 8:30
-	var entry cron.EntryID
-	isTgbotenabled, err := s.settingService.GetTgbotEnabled()
-	if (err == nil) && (isTgbotenabled) {
-		runtime, err := s.settingService.GetTgbotRuntime()
-		if err != nil || runtime == "" {
-			logger.Errorf("Add NewStatsNotifyJob error[%s], Runtime[%s] invalid, will run default", err, runtime)
-			runtime = "@daily"
-		}
-		logger.Infof("Tg notify enabled,run at %s", runtime)
-		_, err = s.cron.AddJob(runtime, job.NewStatsNotifyJob())
-		if err != nil {
-			logger.Warning("Add NewStatsNotifyJob error", err)
-			return
-		}
-
-		// check for Telegram bot callback query hash storage reset
-		s.cron.AddJob("@every 2m", job.NewCheckHashStorageJob())
-
-		// Check CPU load and alarm to TgBot if threshold passes
-		cpuThreshold, err := s.settingService.GetTgCpu()
-		if (err == nil) && (cpuThreshold > 0) {
-			s.cron.AddJob("@every 10s", job.NewCheckCpuJob())
-		}
-	} else {
-		s.cron.Remove(entry)
-	}
 }
 
 // Start initializes and starts the web server with configured settings, routes, and background jobs.
@@ -449,12 +420,6 @@ func (s *Server) Start() (err error) {
 
 	s.startTask()
 
-	isTgbotenabled, err := s.settingService.GetTgbotEnabled()
-	if (err == nil) && (isTgbotenabled) {
-		tgBot := s.tgbotService.NewTgbot()
-		tgBot.Start(i18nFS)
-	}
-
 	return nil
 }
 
@@ -464,9 +429,6 @@ func (s *Server) Stop() error {
 	s.xrayService.StopXray()
 	if s.cron != nil {
 		s.cron.Stop()
-	}
-	if s.tgbotService.IsRunning() {
-		s.tgbotService.Stop()
 	}
 	// Gracefully stop WebSocket hub
 	if s.wsHub != nil {

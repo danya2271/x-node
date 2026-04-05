@@ -32,7 +32,6 @@ const (
 
 // SettingService interface defines methods for accessing locale settings.
 type SettingService interface {
-	GetTgLang() (string, error)
 }
 
 // InitLocalizer initializes the internationalization system with embedded translation files.
@@ -43,11 +42,6 @@ func InitLocalizer(i18nFS embed.FS, settingService SettingService) error {
 
 	// parse files
 	if err := parseTranslationFiles(i18nFS, i18nBundle); err != nil {
-		return err
-	}
-
-	// setup bot locale
-	if err := initTGBotLocalizer(settingService); err != nil {
 		return err
 	}
 
@@ -103,17 +97,6 @@ func I18n(i18nType I18nType, key string, params ...string) string {
 	}
 
 	return msg
-}
-
-// initTGBotLocalizer initializes the bot localizer with the configured language.
-func initTGBotLocalizer(settingService SettingService) error {
-	botLang, err := settingService.GetTgLang()
-	if err != nil {
-		return err
-	}
-
-	LocalizerBot = i18n.NewLocalizer(i18nBundle, botLang)
-	return nil
 }
 
 // LocalizerMiddleware returns a Gin middleware that sets up localization for web requests.
