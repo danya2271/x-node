@@ -115,7 +115,10 @@ wget -q --show-progress -O "$ORIG_DIR/$PKG_DIR/bin/geosite.dat" "https://github.
 echo -e "${yellow}Downloading RU specific GeoIP and GeoSite files...${plain}"
 wget -q --show-progress -O "$ORIG_DIR/$PKG_DIR/bin/geoip_RU.dat" "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat"
 wget -q --show-progress -O "$ORIG_DIR/$PKG_DIR/bin/geosite_RU.dat" "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat"
-# (IR dat files intentionally omitted per request)
+
+echo -e "${yellow}Downloading IR specific GeoIP and GeoSite files...${plain}"
+wget -q --show-progress -O "$ORIG_DIR/$PKG_DIR/bin/geoip_IR.dat" "https://raw.githubusercontent.com/Chocolate4U/Iran-v2ray-rules/release/geoip.dat"
+wget -q --show-progress -O "$ORIG_DIR/$PKG_DIR/bin/geosite_IR.dat" "https://raw.githubusercontent.com/Chocolate4U/Iran-v2ray-rules/release/geosite.dat"
 
 
 # ==========================================
