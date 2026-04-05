@@ -734,11 +734,11 @@ config_after_install() {
 install_x-ui() {
     cd ${xui_folder%/x-ui}/
 
-    local local_file="${cur_dir}/x-ui-linux-$(arch).tar.gz"
+    local local_file="${cur_dir}/x-node-linux-$(arch).tar.gz"
 
     # Fallback to specifically AMD64 if it couldn't find the $(arch) one.
     if [[ ! -f "$local_file" ]]; then
-        local_file="${cur_dir}/x-ui-linux-amd64.tar.gz"
+        local_file="${cur_dir}/x-node-linux-amd64.tar.gz"
     fi
 
     # Terminate script if the file isn't in the same directory as the script.
