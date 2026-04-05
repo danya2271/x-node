@@ -736,24 +736,22 @@ install_x-ui() {
 
     local local_file="${cur_dir}/x-node-linux-$(arch).tar.gz"
 
-    # Fallback to specifically AMD64 if it couldn't find the $(arch) one.
     if [[ ! -f "$local_file" ]]; then
         local_file="${cur_dir}/x-node-linux-amd64.tar.gz"
     fi
 
-    # Terminate script if the file isn't in the same directory as the script.
     if [[ ! -f "$local_file" ]]; then
         echo -e "${red}Fatal error: ${plain} Could not find local file $local_file"
         echo -e "Please place the pre-built tar.gz in the same directory as this install.sh script."
         exit 1
     fi
 
-    echo -e "${green}Found local x-ui package: ${local_file}${plain}"
+    echo -e "${green}Found local package: ${local_file}${plain}"
     echo -e "Beginning local installation..."
 
     cp "$local_file" ./x-ui-linux-$(arch).tar.gz
 
-    # Stop x-ui service and remove old resources
+    # Stop service and remove old resources
     if [[ -e ${xui_folder}/ ]]; then
         if [[ $release == "alpine" ]]; then
             rc-service x-ui stop
@@ -763,25 +761,43 @@ install_x-ui() {
         rm ${xui_folder}/ -rf
     fi
 
-    # Extract resources and set permissions
+    # Extract resources
     tar zxvf x-ui-linux-$(arch).tar.gz
     rm x-ui-linux-$(arch).tar.gz -f
 
+    # Rename extracted x-node folder to expected x-ui if it exists
+    if [ -d "x-node" ]; then
+        mv x-node x-ui
+    fi
+
     cd x-ui
+
+    # Rename the x-node executable to expected x-ui
+    if [ -f "x-node" ]; then
+        mv x-node x-ui
+    fi
     chmod +x x-ui
+
+    # Check if x-ui.sh exists; if not, download it as a fallback
+    if [ ! -f "x-ui.sh" ]; then
+        echo -e "${yellow}x-ui.sh not found in tarball, downloading from GitHub fallback...${plain}"
+        curl -4fLRo x-ui.sh https://raw.githubusercontent.com/danya2271/x-node/main/x-ui.sh >/dev/null 2>&1 || \
+        curl -4fLRo x-ui.sh https://raw.githubusercontent.com/MHSanaei/3x-ui/main/x-ui.sh >/dev/null 2>&1
+    fi
     chmod +x x-ui.sh
 
-    # Check the system's architecture and rename the file accordingly
+    # Handle architecture binary
     if [[ $(arch) == "armv5" || $(arch) == "armv6" || $(arch) == "armv7" ]]; then
         mv bin/xray-linux-$(arch) bin/xray-linux-arm
         chmod +x bin/xray-linux-arm
     fi
-    chmod +x x-ui bin/xray-linux-$(arch)
+    chmod +x bin/xray-linux-$(arch)
 
-    # Update x-ui cli & set permissions from local extracted directory
+    # Update cli & set permissions from local extracted directory
     cp -f x-ui.sh /usr/bin/x-ui
     chmod +x /usr/bin/x-ui
     mkdir -p /var/log/x-ui
+
     config_after_install
 
     # Etckeeper compatibility
@@ -802,7 +818,6 @@ install_x-ui() {
         if [ -f "x-ui.rc" ]; then
             cp -f x-ui.rc /etc/init.d/x-ui
         else
-            # Fallback in case package was incomplete
             curl -4fLRo /etc/init.d/x-ui https://raw.githubusercontent.com/MHSanaei/3x-ui/main/x-ui.rc
         fi
         chmod +x /etc/init.d/x-ui
@@ -852,7 +867,6 @@ install_x-ui() {
             esac
         fi
 
-        # If service file not found in tar.gz, download from GitHub as absolute fallback
         if [ "$service_installed" = false ]; then
             echo -e "${yellow}Service files not found in tar.gz, downloading from GitHub...${plain}"
             case "${release}" in
@@ -887,7 +901,7 @@ install_x-ui() {
         fi
     fi
 
-    echo -e "${green}x-ui local installation finished, it is running now...${plain}"
+    echo -e "${green}Installation finished, panel is running now...${plain}"
     echo -e ""
     echo -e "┌───────────────────────────────────────────────────────┐
 │  ${blue}x-ui control menu usages (subcommands):${plain}              │
@@ -909,6 +923,118 @@ install_x-ui() {
 └───────────────────────────────────────────────────────┘"
 }
 
+update_x-ui() {
+    cd ${xui_folder%/x-ui}/
+
+    local local_file="${cur_dir}/x-node-linux-$(arch).tar.gz"
+
+    if [[ ! -f "$local_file" ]]; then
+        local_file="${cur_dir}/x-node-linux-amd64.tar.gz"
+    fi
+
+    if [[ ! -f "$local_file" ]]; then
+        echo -e "${red}Fatal error: ${plain} Could not find local file $local_file"
+        echo -e "Please place the pre-built tar.gz in the same directory as this install.sh script."
+        exit 1
+    fi
+
+    echo -e "${green}Found local package: ${local_file}${plain}"
+    echo -e "Beginning local update (skipping reconfiguration)..."
+
+    cp "$local_file" ./x-ui-linux-$(arch).tar.gz
+
+    if [[ -e ${xui_folder}/ ]]; then
+        if [[ $release == "alpine" ]]; then
+            rc-service x-ui stop
+        else
+            systemctl stop x-ui
+        fi
+        rm ${xui_folder}/ -rf
+    fi
+
+    tar zxvf x-ui-linux-$(arch).tar.gz
+    rm x-ui-linux-$(arch).tar.gz -f
+
+    # Rename extracted x-node folder to expected x-ui if it exists
+    if [ -d "x-node" ]; then
+        mv x-node x-ui
+    fi
+
+    cd x-ui
+
+    # Rename the x-node executable to expected x-ui
+    if [ -f "x-node" ]; then
+        mv x-node x-ui
+    fi
+    chmod +x x-ui
+
+    # Check if x-ui.sh exists; if not, download it as a fallback
+    if [ ! -f "x-ui.sh" ]; then
+        echo -e "${yellow}x-ui.sh not found in tarball, downloading from GitHub fallback...${plain}"
+        curl -4fLRo x-ui.sh https://raw.githubusercontent.com/danya2271/x-node/main/x-ui.sh >/dev/null 2>&1 || \
+        curl -4fLRo x-ui.sh https://raw.githubusercontent.com/MHSanaei/3x-ui/main/x-ui.sh >/dev/null 2>&1
+    fi
+    chmod +x x-ui.sh
+
+    # Handle architecture binary
+    if [[ $(arch) == "armv5" || $(arch) == "armv6" || $(arch) == "armv7" ]]; then
+        mv bin/xray-linux-$(arch) bin/xray-linux-arm
+        chmod +x bin/xray-linux-arm
+    fi
+    chmod +x bin/xray-linux-$(arch)
+
+    # Update cli
+    cp -f x-ui.sh /usr/bin/x-ui
+    chmod +x /usr/bin/x-ui
+    mkdir -p /var/log/x-ui
+
+    # Migrate the existing database schema in case of changes
+    echo -e "${green}Migrating existing database...${plain}"
+    ${xui_folder}/x-ui migrate
+
+    # Refresh services and start
+    if [[ $release == "alpine" ]]; then
+        if [ -f "x-ui.rc" ]; then
+            cp -f x-ui.rc /etc/init.d/x-ui
+            chmod +x /etc/init.d/x-ui
+        fi
+        rc-service x-ui start
+    else
+        if [ -f "x-ui.service" ]; then
+            cp -f x-ui.service ${xui_service}/ >/dev/null 2>&1
+        else
+            case "${release}" in
+                ubuntu | debian | armbian)
+                    [ -f "x-ui.service.debian" ] && cp -f x-ui.service.debian ${xui_service}/x-ui.service >/dev/null 2>&1
+                ;;
+                arch | manjaro | parch)
+                    [ -f "x-ui.service.arch" ] && cp -f x-ui.service.arch ${xui_service}/x-ui.service >/dev/null 2>&1
+                ;;
+                *)
+                    [ -f "x-ui.service.rhel" ] && cp -f x-ui.service.rhel ${xui_service}/x-ui.service >/dev/null 2>&1
+                ;;
+            esac
+        fi
+        systemctl daemon-reload
+        systemctl start x-ui
+    fi
+
+    echo -e "${green}Update completed successfully! Panel is now running.${plain}"
+}
+
 echo -e "${green}Running...${plain}"
+
 install_base
+
+if [[ -f "/usr/bin/x-ui" && -d "${xui_folder}" ]]; then
+    echo -e "${yellow}An existing installation was detected.${plain}"
+    read -rp "Do you want to UPDATE it from the local file? (Choose 'n' to do a full config reset) [y/n] (Default: y): " do_update
+    do_update=${do_update:-y}
+    if [[ "$do_update" == "y" || "$do_update" == "Y" ]]; then
+        update_x-ui
+        exit 0
+    fi
+    echo -e "${yellow}Proceeding with full re-installation and configuration check...${plain}"
+fi
+
 install_x-ui
