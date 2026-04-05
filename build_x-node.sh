@@ -75,7 +75,7 @@ mkdir -p "$PKG_DIR/bin"
 
 # Copy panel local dependencies into folder structure
 cp x-node "$PKG_DIR/"
-cp x-node.sh "$PKG_DIR/"
+cp x-node.sh "$PKG_DIR/" 2>/dev/null || true
 cp x-node.rc "$PKG_DIR/" 2>/dev/null || true
 cp *.service* "$PKG_DIR/" 2>/dev/null || true
 
@@ -96,10 +96,26 @@ if [[ $? -ne 0 ]]; then
     exit 1
 fi
 
-# Move the compiled binary directly into the local 3x-node release folder
+# Move the compiled binary directly into the local release folder
 echo -e "${yellow}Moving XPray-core to package directory...${plain}"
 cp xray "$ORIG_DIR/$PKG_DIR/bin/xray-linux-amd64"
 chmod +x "$ORIG_DIR/$PKG_DIR/bin/xray-linux-amd64"
+
+# ==========================================
+# 2.5 Add Missing Files (Geo Assets, Readme, License)
+# ==========================================
+echo -e "${yellow}Copying LICENSE and README.md...${plain}"
+cp LICENSE "$ORIG_DIR/$PKG_DIR/bin/LICENSE" 2>/dev/null || true
+cp README.md "$ORIG_DIR/$PKG_DIR/bin/README.md" 2>/dev/null || true
+
+echo -e "${yellow}Downloading standard GeoIP and GeoSite files...${plain}"
+wget -q --show-progress -O "$ORIG_DIR/$PKG_DIR/bin/geoip.dat" "https://github.com/v2fly/geoip/releases/latest/download/geoip.dat"
+wget -q --show-progress -O "$ORIG_DIR/$PKG_DIR/bin/geosite.dat" "https://github.com/v2fly/domain-list-community/releases/latest/download/dlc.dat"
+
+echo -e "${yellow}Downloading RU specific GeoIP and GeoSite files...${plain}"
+wget -q --show-progress -O "$ORIG_DIR/$PKG_DIR/bin/geoip_RU.dat" "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat"
+wget -q --show-progress -O "$ORIG_DIR/$PKG_DIR/bin/geosite_RU.dat" "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat"
+# (IR dat files intentionally omitted per request)
 
 
 # ==========================================
