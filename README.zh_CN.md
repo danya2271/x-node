@@ -25,7 +25,9 @@
 ## 快速开始
 
 ```
-bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/danya2271/x-node/main/install.sh)
+
+
 ```
 
 完整文档请参阅 [项目Wiki](https://github.com/MHSanaei/3x-ui/wiki)。
