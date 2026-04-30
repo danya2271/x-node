@@ -405,7 +405,7 @@ ssl_cert_issue() {
     local domain=""
     if [[ $AUTO_MODE -eq 1 ]]; then
         domain="${AUTO_DOMAIN}"
-        if [[ -z "$domain" || ! is_domain "$domain" ]]; then
+        if [[ -z "$domain" ]] || ! is_domain "$domain"; then
             echo -e "${red}Invalid or missing domain format for auto mode: ${domain}${plain}"
             return 1
         fi
