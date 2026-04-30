@@ -26,6 +26,7 @@ AUTO_IPV6=""
 AUTO_CERT_PATH=""
 AUTO_KEY_PATH=""
 AUTO_WEB_PORT=""
+AUTO_EXPORT_FILE=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -38,6 +39,7 @@ while [[ "$#" -gt 0 ]]; do
         --cert) AUTO_CERT_PATH="$2"; AUTO_MODE=1; shift 2 ;;
         --key) AUTO_KEY_PATH="$2"; AUTO_MODE=1; shift 2 ;;
         --web-port) AUTO_WEB_PORT="$2"; AUTO_MODE=1; shift 2 ;;
+        --export-auth) AUTO_EXPORT_FILE="$2"; AUTO_MODE=1; shift 2 ;;
         -y|--yes) AUTO_MODE=1; shift ;;
         --help)
             echo "Usage: $0 [options]"
@@ -51,6 +53,7 @@ while [[ "$#" -gt 0 ]]; do
             echo "  --cert <path>             Custom certificate path"
             echo "  --key <path>              Custom key path"
             echo "  --web-port <port>         Web port for ACME standalone (default 80)"
+            echo "  --export-auth <file>      Export generated credentials to a specified file"
             echo "  -y, --yes                 Enable non-interactive mode with defaults"
             exit 0
             ;;
@@ -744,6 +747,12 @@ config_after_install() {
         fi
     done
 
+    # Setup variables for the export feature
+    local final_user="<unchanged>"
+    local final_pass="<unchanged>"
+    local final_port="${existing_port}"
+    local final_path="${existing_webBasePath}"
+
     if [[ ${#existing_webBasePath} -lt 4 ]]; then
         if [[ "$existing_hasDefaultCredential" == "true" ]]; then
             local config_webBasePath=$(gen_random_string 18)
@@ -770,6 +779,11 @@ config_after_install() {
             fi
 
             ${xui_folder}/x-ui setting -username "${config_username}" -password "${config_password}" -port "${config_port}" -webBasePath "${config_webBasePath}"
+
+            final_user="${config_username}"
+            final_pass="${config_password}"
+            final_port="${config_port}"
+            final_path="${config_webBasePath}"
 
             echo ""
             echo -e "${green}═══════════════════════════════════════════${plain}"
@@ -799,6 +813,8 @@ config_after_install() {
             ${xui_folder}/x-ui setting -webBasePath "${config_webBasePath}"
             echo -e "${green}New WebBasePath: ${config_webBasePath}${plain}"
 
+            final_path="${config_webBasePath}"
+
             if [[ -z "${existing_cert}" ]]; then
                 echo ""
                 echo -e "${green}═══════════════════════════════════════════${plain}"
@@ -824,6 +840,9 @@ config_after_install() {
             echo -e "${green}Username: ${config_username}${plain}"
             echo -e "${green}Password: ${config_password}${plain}"
             echo -e "###############################################"
+
+            final_user="${config_username}"
+            final_pass="${config_password}"
         else
             echo -e "${green}Username, Password, and WebBasePath are properly set.${plain}"
         fi
@@ -844,6 +863,19 @@ config_after_install() {
     fi
 
     ${xui_folder}/x-ui migrate
+
+    # Final credential export handling
+    if [[ -n "$AUTO_EXPORT_FILE" ]]; then
+        mkdir -p "$(dirname "$AUTO_EXPORT_FILE")"
+        cat <<EOF > "$AUTO_EXPORT_FILE"
+URL=http(s)://${SSL_HOST:-$server_ip}:${final_port}/${final_path}
+USERNAME=${final_user}
+PASSWORD=${final_pass}
+PORT=${final_port}
+WEB_BASE_PATH=${final_path}
+EOF
+        echo -e "${green}✓ Credentials exported to: ${AUTO_EXPORT_FILE}${plain}"
+    fi
 }
 
 install_x-ui() {
