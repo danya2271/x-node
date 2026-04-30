@@ -14,6 +14,51 @@ xui_service="${XUI_SERVICE:=/etc/systemd/system}"
 # check root
 [[ $EUID -ne 0 ]] && echo -e "${red}Fatal error: ${plain} Please run this script with root privilege \n " && exit 1
 
+# ==========================================
+# Argument parser for auto deployment
+# ==========================================
+AUTO_MODE=0
+AUTO_UPDATE=""
+AUTO_PANEL_PORT=""
+AUTO_SSL_MODE=""
+AUTO_DOMAIN=""
+AUTO_IPV6=""
+AUTO_CERT_PATH=""
+AUTO_KEY_PATH=""
+AUTO_WEB_PORT=""
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --update) AUTO_UPDATE="y"; AUTO_MODE=1; shift ;;
+        --reinstall) AUTO_UPDATE="n"; AUTO_MODE=1; shift ;;
+        --panel-port) AUTO_PANEL_PORT="$2"; AUTO_MODE=1; shift 2 ;;
+        --ssl) AUTO_SSL_MODE="$2"; AUTO_MODE=1; shift 2 ;; # domain, ip, custom, none
+        --domain) AUTO_DOMAIN="$2"; AUTO_MODE=1; shift 2 ;;
+        --ipv6) AUTO_IPV6="$2"; AUTO_MODE=1; shift 2 ;;
+        --cert) AUTO_CERT_PATH="$2"; AUTO_MODE=1; shift 2 ;;
+        --key) AUTO_KEY_PATH="$2"; AUTO_MODE=1; shift 2 ;;
+        --web-port) AUTO_WEB_PORT="$2"; AUTO_MODE=1; shift 2 ;;
+        -y|--yes) AUTO_MODE=1; shift ;;
+        --help)
+            echo "Usage: $0 [options]"
+            echo "Options:"
+            echo "  --update                  Auto update if installed"
+            echo "  --reinstall               Force reinstall/reset if installed"
+            echo "  --panel-port <port>       Set panel port"
+            echo "  --ssl <domain|ip|custom|none> SSL setup mode"
+            echo "  --domain <domain>         Domain for SSL"
+            echo "  --ipv6 <ipv6>             IPv6 for IP SSL mode"
+            echo "  --cert <path>             Custom certificate path"
+            echo "  --key <path>              Custom key path"
+            echo "  --web-port <port>         Web port for ACME standalone (default 80)"
+            echo "  -y, --yes                 Enable non-interactive mode with defaults"
+            exit 0
+            ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+done
+# ==========================================
+
 # Check OS and set release variable
 if [[ -f /etc/os-release ]]; then
     source /etc/os-release
@@ -234,11 +279,15 @@ setup_ip_certificate() {
 
     # Choose port for HTTP-01 listener (default 80, prompt override)
     local WebPort=""
-    read -rp "Port to use for ACME HTTP-01 listener (default 80): " WebPort
-    WebPort="${WebPort:-80}"
-    if ! [[ "${WebPort}" =~ ^[0-9]+$ ]] || ((WebPort < 1 || WebPort > 65535)); then
-        echo -e "${red}Invalid port provided. Falling back to 80.${plain}"
-        WebPort=80
+    if [[ $AUTO_MODE -eq 1 ]]; then
+        WebPort="${AUTO_WEB_PORT:-80}"
+    else
+        read -rp "Port to use for ACME HTTP-01 listener (default 80): " WebPort
+        WebPort="${WebPort:-80}"
+        if ! [[ "${WebPort}" =~ ^[0-9]+$ ]] || ((WebPort < 1 || WebPort > 65535)); then
+            echo -e "${red}Invalid port provided. Falling back to 80.${plain}"
+            WebPort=80
+        fi
     fi
     echo -e "${green}Using port ${WebPort} for standalone validation.${plain}"
     if [[ "${WebPort}" -ne 80 ]]; then
@@ -249,6 +298,11 @@ setup_ip_certificate() {
     while true; do
         if is_port_in_use "${WebPort}"; then
             echo -e "${yellow}Port ${WebPort} is in use.${plain}"
+
+            if [[ $AUTO_MODE -eq 1 ]]; then
+                echo -e "${red}Port ${WebPort} is busy. Cannot proceed in auto mode.${plain}"
+                return 1
+            fi
 
             local alt_port=""
             read -rp "Enter another port for acme.sh standalone listener (leave empty to abort): " alt_port
@@ -346,21 +400,29 @@ ssl_cert_issue() {
     fi
 
     local domain=""
-    while true; do
-        read -rp "Please enter your domain name: " domain
-        domain="${domain// /}"
-
-        if [[ -z "$domain" ]]; then
-            echo -e "${red}Domain name cannot be empty. Please try again.${plain}"
-            continue
+    if [[ $AUTO_MODE -eq 1 ]]; then
+        domain="${AUTO_DOMAIN}"
+        if [[ -z "$domain" || ! is_domain "$domain" ]]; then
+            echo -e "${red}Invalid or missing domain format for auto mode: ${domain}${plain}"
+            return 1
         fi
+    else
+        while true; do
+            read -rp "Please enter your domain name: " domain
+            domain="${domain// /}"
 
-        if ! is_domain "$domain"; then
-            echo -e "${red}Invalid domain format: ${domain}. Please enter a valid domain name.${plain}"
-            continue
-        fi
-        break
-    done
+            if [[ -z "$domain" ]]; then
+                echo -e "${red}Domain name cannot be empty. Please try again.${plain}"
+                continue
+            fi
+
+            if ! is_domain "$domain"; then
+                echo -e "${red}Invalid domain format: ${domain}. Please enter a valid domain name.${plain}"
+                continue
+            fi
+            break
+        done
+    fi
     echo -e "${green}Your domain is: ${domain}, checking it...${plain}"
     SSL_ISSUED_DOMAIN="${domain}"
 
@@ -384,10 +446,14 @@ ssl_cert_issue() {
     fi
 
     local WebPort=80
-    read -rp "Please choose which port to use (default is 80): " WebPort
-    if [[ ${WebPort} -gt 65535 || ${WebPort} -lt 1 ]]; then
-        echo -e "${yellow}Your input ${WebPort} is invalid, will use default port 80.${plain}"
-        WebPort=80
+    if [[ $AUTO_MODE -eq 1 ]]; then
+        WebPort="${AUTO_WEB_PORT:-80}"
+    else
+        read -rp "Please choose which port to use (default is 80): " WebPort
+        if [[ ${WebPort} -gt 65535 || ${WebPort} -lt 1 ]]; then
+            echo -e "${yellow}Your input ${WebPort} is invalid, will use default port 80.${plain}"
+            WebPort=80
+        fi
     fi
     echo -e "${green}Will use port: ${WebPort} to issue certificates. Please make sure this port is open.${plain}"
 
@@ -413,7 +479,13 @@ ssl_cert_issue() {
     reloadCmd="systemctl restart x-ui || rc-service x-ui restart"
     echo -e "${green}Default --reloadcmd for ACME is: ${yellow}systemctl restart x-ui || rc-service x-ui restart${plain}"
     echo -e "${green}This command will run on every certificate issue and renew.${plain}"
-    read -rp "Would you like to modify --reloadcmd for ACME? (y/n): " setReloadcmd
+
+    if [[ $AUTO_MODE -eq 1 ]]; then
+        setReloadcmd="n"
+    else
+        read -rp "Would you like to modify --reloadcmd for ACME? (y/n): " setReloadcmd
+    fi
+
     if [[ "$setReloadcmd" == "y" || "$setReloadcmd" == "Y" ]]; then
         echo -e "\n${green}\t1.${plain} Preset: systemctl reload nginx ; systemctl restart x-ui"
         echo -e "${green}\t2.${plain} Input your own command"
@@ -474,7 +546,11 @@ ssl_cert_issue() {
 
     systemctl start x-ui 2>/dev/null || rc-service x-ui start 2>/dev/null
 
-    read -rp "Would you like to set this certificate for the panel? (y/n): " setPanel
+    if [[ $AUTO_MODE -eq 1 ]]; then
+        setPanel="y"
+    else
+        read -rp "Would you like to set this certificate for the panel? (y/n): " setPanel
+    fi
     if [[ "$setPanel" == "y" || "$setPanel" == "Y" ]]; then
         local webCertFile="/root/cert/${domain}/fullchain.pem"
         local webKeyFile="/root/cert/${domain}/privkey.pem"
@@ -502,16 +578,26 @@ prompt_and_setup_ssl() {
 
     local ssl_choice=""
 
-    echo -e "${yellow}Choose SSL certificate setup method:${plain}"
-    echo -e "${green}1.${plain} Let's Encrypt for Domain (90-day validity, auto-renews)"
-    echo -e "${green}2.${plain} Let's Encrypt for IP Address (6-day validity, auto-renews)"
-    echo -e "${green}3.${plain} Custom SSL Certificate (Path to existing files)"
-    echo -e "${blue}Note:${plain} Options 1 & 2 require port 80 open. Option 3 requires manual paths."
-    read -rp "Choose an option (default 2 for IP): " ssl_choice
-    ssl_choice="${ssl_choice// /}"  # Trim whitespace
+    if [[ $AUTO_MODE -eq 1 ]]; then
+        case "$AUTO_SSL_MODE" in
+            domain) ssl_choice="1" ;;
+            ip) ssl_choice="2" ;;
+            custom) ssl_choice="3" ;;
+            none) ssl_choice="none" ;;
+            *) ssl_choice="2" ;;
+        esac
+    else
+        echo -e "${yellow}Choose SSL certificate setup method:${plain}"
+        echo -e "${green}1.${plain} Let's Encrypt for Domain (90-day validity, auto-renews)"
+        echo -e "${green}2.${plain} Let's Encrypt for IP Address (6-day validity, auto-renews)"
+        echo -e "${green}3.${plain} Custom SSL Certificate (Path to existing files)"
+        echo -e "${blue}Note:${plain} Options 1 & 2 require port 80 open. Option 3 requires manual paths."
+        read -rp "Choose an option (default 2 for IP): " ssl_choice
+        ssl_choice="${ssl_choice// /}"  # Trim whitespace
 
-    if [[ "$ssl_choice" != "1" && "$ssl_choice" != "3" ]]; then
-        ssl_choice="2"
+        if [[ "$ssl_choice" != "1" && "$ssl_choice" != "3" ]]; then
+            ssl_choice="2"
+        fi
     fi
 
     case "$ssl_choice" in
@@ -538,8 +624,12 @@ prompt_and_setup_ssl() {
     2)
         echo -e "${green}Using Let's Encrypt for IP certificate (shortlived profile)...${plain}"
         local ipv6_addr=""
-        read -rp "Do you have an IPv6 address to include? (leave empty to skip): " ipv6_addr
-        ipv6_addr="${ipv6_addr// /}"  # Trim whitespace
+        if [[ $AUTO_MODE -eq 1 ]]; then
+            ipv6_addr="${AUTO_IPV6}"
+        else
+            read -rp "Do you have an IPv6 address to include? (leave empty to skip): " ipv6_addr
+            ipv6_addr="${ipv6_addr// /}"  # Trim whitespace
+        fi
 
         if [[ $release == "alpine" ]]; then
             rc-service x-ui stop >/dev/null 2>&1
@@ -562,38 +652,49 @@ prompt_and_setup_ssl() {
         local custom_key=""
         local custom_domain=""
 
-        read -rp "Please enter domain name certificate issued for: " custom_domain
-        custom_domain="${custom_domain// /}" # Remove spaces
-
-        while true; do
-            read -rp "Input certificate path (keywords: .crt / fullchain): " custom_cert
-            custom_cert=$(echo "$custom_cert" | tr -d '"' | tr -d "'")
-
-            if [[ -f "$custom_cert" && -r "$custom_cert" && -s "$custom_cert" ]]; then
-                break
-            elif [[ ! -f "$custom_cert" ]]; then
-                echo -e "${red}Error: File does not exist! Try again.${plain}"
-            elif [[ ! -r "$custom_cert" ]]; then
-                echo -e "${red}Error: File exists but is not readable (check permissions)!${plain}"
-            else
-                echo -e "${red}Error: File is empty!${plain}"
+        if [[ $AUTO_MODE -eq 1 ]]; then
+            custom_domain="${AUTO_DOMAIN}"
+            custom_cert="${AUTO_CERT_PATH}"
+            custom_key="${AUTO_KEY_PATH}"
+            if [[ ! -f "$custom_cert" || ! -f "$custom_key" ]]; then
+                echo -e "${red}Custom cert/key files missing in auto mode!${plain}"
+                SSL_HOST="${server_ip}"
+                return 1
             fi
-        done
+        else
+            read -rp "Please enter domain name certificate issued for: " custom_domain
+            custom_domain="${custom_domain// /}" # Remove spaces
 
-        while true; do
-            read -rp "Input private key path (keywords: .key / privatekey): " custom_key
-            custom_key=$(echo "$custom_key" | tr -d '"' | tr -d "'")
+            while true; do
+                read -rp "Input certificate path (keywords: .crt / fullchain): " custom_cert
+                custom_cert=$(echo "$custom_cert" | tr -d '"' | tr -d "'")
 
-            if [[ -f "$custom_key" && -r "$custom_key" && -s "$custom_key" ]]; then
-                break
-            elif [[ ! -f "$custom_key" ]]; then
-                echo -e "${red}Error: File does not exist! Try again.${plain}"
-            elif [[ ! -r "$custom_key" ]]; then
-                echo -e "${red}Error: File exists but is not readable (check permissions)!${plain}"
-            else
-                echo -e "${red}Error: File is empty!${plain}"
-            fi
-        done
+                if [[ -f "$custom_cert" && -r "$custom_cert" && -s "$custom_cert" ]]; then
+                    break
+                elif [[ ! -f "$custom_cert" ]]; then
+                    echo -e "${red}Error: File does not exist! Try again.${plain}"
+                elif [[ ! -r "$custom_cert" ]]; then
+                    echo -e "${red}Error: File exists but is not readable (check permissions)!${plain}"
+                else
+                    echo -e "${red}Error: File is empty!${plain}"
+                fi
+            done
+
+            while true; do
+                read -rp "Input private key path (keywords: .key / privatekey): " custom_key
+                custom_key=$(echo "$custom_key" | tr -d '"' | tr -d "'")
+
+                if [[ -f "$custom_key" && -r "$custom_key" && -s "$custom_key" ]]; then
+                    break
+                elif [[ ! -f "$custom_key" ]]; then
+                    echo -e "${red}Error: File does not exist! Try again.${plain}"
+                elif [[ ! -r "$custom_key" ]]; then
+                    echo -e "${red}Error: File exists but is not readable (check permissions)!${plain}"
+                else
+                    echo -e "${red}Error: File is empty!${plain}"
+                fi
+            done
+        fi
 
         ${xui_folder}/x-ui cert -webCert "$custom_cert" -webCertKey "$custom_key" >/dev/null 2>&1
 
@@ -607,6 +708,10 @@ prompt_and_setup_ssl() {
         echo -e "${yellow}Note: You are responsible for renewing these files externally.${plain}"
 
         systemctl restart x-ui >/dev/null 2>&1 || rc-service x-ui restart >/dev/null 2>&1
+        ;;
+    none)
+        echo -e "${yellow}Skipping SSL setup as requested (--ssl none).${plain}"
+        SSL_HOST="${server_ip}"
         ;;
     *)
         echo -e "${red}Invalid option. Skipping SSL setup.${plain}"
@@ -644,14 +749,24 @@ config_after_install() {
             local config_webBasePath=$(gen_random_string 18)
             local config_username=$(gen_random_string 10)
             local config_password=$(gen_random_string 10)
+            local config_port=""
 
-            read -rp "Would you like to customize the Panel Port settings? (If not, a random port will be applied) [y/n]: " config_confirm
-            if [[ "${config_confirm}" == "y" || "${config_confirm}" == "Y" ]]; then
-                read -rp "Please set up the panel port: " config_port
-                echo -e "${yellow}Your Panel Port is: ${config_port}${plain}"
+            if [[ $AUTO_MODE -eq 1 ]]; then
+                if [[ -n "$AUTO_PANEL_PORT" ]]; then
+                    config_port="$AUTO_PANEL_PORT"
+                else
+                    config_port=$(shuf -i 1024-62000 -n 1)
+                fi
+                echo -e "${yellow}Auto-configured Panel Port: ${config_port}${plain}"
             else
-                local config_port=$(shuf -i 1024-62000 -n 1)
-                echo -e "${yellow}Generated random port: ${config_port}${plain}"
+                read -rp "Would you like to customize the Panel Port settings? (If not, a random port will be applied) [y/n]: " config_confirm
+                if [[ "${config_confirm}" == "y" || "${config_confirm}" == "Y" ]]; then
+                    read -rp "Please set up the panel port: " config_port
+                    echo -e "${yellow}Your Panel Port is: ${config_port}${plain}"
+                else
+                    config_port=$(shuf -i 1024-62000 -n 1)
+                    echo -e "${yellow}Generated random port: ${config_port}${plain}"
+                fi
             fi
 
             ${xui_folder}/x-ui setting -username "${config_username}" -password "${config_password}" -port "${config_port}" -webBasePath "${config_webBasePath}"
@@ -1028,8 +1143,17 @@ install_base
 
 if [[ -f "/usr/bin/x-ui" && -d "${xui_folder}" ]]; then
     echo -e "${yellow}An existing installation was detected.${plain}"
-    read -rp "Do you want to UPDATE it from the local file? (Choose 'n' to do a full config reset) [y/n] (Default: y): " do_update
-    do_update=${do_update:-y}
+    if [[ $AUTO_MODE -eq 1 ]]; then
+        if [[ -n "$AUTO_UPDATE" ]]; then
+            do_update="$AUTO_UPDATE"
+        else
+            do_update="y" # Default to update in auto mode if missing flag
+        fi
+    else
+        read -rp "Do you want to UPDATE it from the local file? (Choose 'n' to do a full config reset) [y/n] (Default: y): " do_update
+        do_update=${do_update:-y}
+    fi
+
     if [[ "$do_update" == "y" || "$do_update" == "Y" ]]; then
         update_x-ui
         exit 0
