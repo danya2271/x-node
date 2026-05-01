@@ -102,8 +102,12 @@ cp xray "$ORIG_DIR/$PKG_DIR/bin/xray-linux-amd64"
 chmod +x "$ORIG_DIR/$PKG_DIR/bin/xray-linux-amd64"
 
 # ==========================================
-# 2.5 Add Missing Files (Geo Assets, Readme, License)
+# 2.5 Add Required Files (Geo Assets, Readme, License, x-ui script)
 # ==========================================
+
+echo -e "$(yellow)Copying x-ui script...$(plain)"
+cp x-ui.sh "$ORIG_DIR/$PKG_DIR/x-ui.sh" 2>/dev/null || true
+
 echo -e "${yellow}Copying LICENSE and README.md...${plain}"
 cp LICENSE "$ORIG_DIR/$PKG_DIR/bin/LICENSE" 2>/dev/null || true
 cp README.md "$ORIG_DIR/$PKG_DIR/bin/README.md" 2>/dev/null || true
